@@ -114,3 +114,166 @@ class Worker:
               f"TypeB: {self.jobs_completed['TypeB']}, TypeC: {self.jobs_completed['TypeC']}")
         print(f"    Turns idle: {self.turns_idle}")
         print(f"    Status: {status}")
+# CLASS: Simulation
+# runs the whole thing
+class Simulation:
+    def __init__(self, num_turns, area_counts, probabilities, damage_range, worker_data):
+        self.num_turns = num_turns
+        self.probabilities = probabilities      # dict: type -> probability of damage each turn
+        self.damage_min = damage_range[0]       # best case damage
+        self.damage_max = damage_range[1]       # worst case damage
+
+        # create all the area objects
+        self.areas = []
+        for area_type, count in area_counts.items():
+            for i in range(1, count + 1):
+                self.areas.append(Area(area_type, i))
+
+        # create all the worker objects
+        self.workers = []
+        for (name, ra, rb, rc) in worker_data:
+            self.workers.append(Worker(name, ra, rb, rc))
+
+    def get_available_workers(self):
+        return [w for w in self.workers if w.is_available()]
+
+    def get_unassigned_damaged_areas(self):
+        # areas that are damaged but havent been assigned a worker yet
+        return [a for a in self.areas if not a.is_working() and not a.is_being_repaired()]
+
+    def allocate_jobs(self):
+        """
+        Assign workers to damaged unassigned areas.
+        Company rule:
+        - Find the single (worker, area) combo with the shortest fix time
+        - Assign that worker to that area
+        - Repeat with remaining workers and areas
+        """
+        unassigned_areas = self.get_unassigned_damaged_areas()
+        available_workers = self.get_available_workers()
+
+        # keep going until we run out of workers or jobs
+        while unassigned_areas and available_workers:
+            best_time = None
+            best_worker = None
+            best_area = None
+
+            # look at every combo of available worker and unassigned area
+            for worker in available_workers:
+                for area in unassigned_areas:
+                    t = worker.turns_to_fix(area)
+                    if best_time is None or t < best_time:
+                        best_time = t
+                        best_worker = worker
+                        best_area = area
+
+            # assign the best matching worker
+            best_worker.assign_job(best_area)
+
+            # remove them from the pool for this round of allocation
+            available_workers.remove(best_worker)
+            unassigned_areas.remove(best_area)
+
+    def run(self):
+        print("\n--- Simulation Starting ---\n")
+
+        for turn in range(1, self.num_turns + 1):
+            print(f"Turn {turn}:")
+
+            # step 1: working areas can randomly get damaged
+            for area in self.areas:
+                if area.is_working():
+                    prob = self.probabilities[area.area_type]
+                    if random.random() < prob:
+                        # random damage between the min and max (inclusive)
+                        dmg = random.randint(self.damage_min, self.damage_max)
+                        area.apply_damage(dmg)
+                        print(f"  {area.name} got damaged! Damage level: {dmg}")
+
+            # step 2: update stats
+            for area in self.areas:
+                area.update_stats()
+            for worker in self.workers:
+                worker.update_stats()
+
+            # step 3: workers repair their assigned areas
+            # we iterate over a copy because the assignments can change mid-loop
+            for area in list(self.areas):
+                if area.is_being_repaired():
+                    area.apply_repair()
+                    if area.is_working():
+                        print(f"  {area.name} has been fully repaired!")
+
+            # step 4: allocate available workers to unassigned damaged areas
+            self.allocate_jobs()
+
+            # show current assignments
+            for area in self.areas:
+                if area.is_being_repaired():
+                    print(f"  {area.assigned_worker.name} assigned to {area.name} "
+                          f"(damage remaining: {area.damage})")
+
+            print()
+
+        print("--- Simulation Complete ---\n")
+
+    def print_results(self):
+        print("=" * 50)
+        print("FINAL RESULTS")
+        print("=" * 50)
+
+        print("\n--- Area Statistics ---")
+        for area in self.areas:
+            area.print_stats()
+
+        print("\n--- Worker Statistics ---")
+        for worker in self.workers:
+            worker.print_stats()
+
+# getting the user inputs
+def get_user_inputs():
+    print("=== Maintenance Simulation Setup ===\n")
+
+    num_turns = int(input("How many turns to simulate? "))
+
+    # area counts
+    area_counts = {}
+    for area_type in ['TypeA', 'TypeB', 'TypeC']:
+        count = int(input(f"How many {area_type} areas are there? "))
+        area_counts[area_type] = count
+
+    # probabilities
+    probabilities = {}
+    for area_type in ['TypeA', 'TypeB', 'TypeC']:
+        prob = float(input(f"Probability of {area_type} getting damaged each turn (0-1): "))
+        probabilities[area_type] = prob
+
+    # damage range (shared across all types)
+    damage_min = int(input("Best case damage (minimum): "))
+    damage_max = int(input("Worst case damage (maximum): "))
+    damage_range = (damage_min, damage_max)
+
+    # workers
+    worker_data = []
+    num_workers = int(input("How many workers? "))
+    for i in range(num_workers):
+        name = input(f"  Worker {i+1} name: ")
+        ra = int(input(f"    {name}'s repair rate for TypeA: "))
+        rb = int(input(f"    {name}'s repair rate for TypeB: "))
+        rc = int(input(f"    {name}'s repair rate for TypeC: "))
+        worker_data.append((name, ra, rb, rc))
+
+    return num_turns, area_counts, probabilities, damage_range, worker_data
+
+# MAIN - Entry point
+def main():
+    num_turns, area_counts, probabilities, damage_range, worker_data = get_user_inputs()
+
+    # create and run the simulation
+    sim = Simulation(num_turns, area_counts, probabilities, damage_range, worker_data)
+    sim.run()
+    sim.print_results()
+
+
+if __name__ == "__main__":
+    main()
