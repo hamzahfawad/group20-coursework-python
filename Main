@@ -1,1 +1,116 @@
+import random
+import math
 
+# CLASS: Area
+# represents one area
+class Area:
+    def __init__(self, area_type, number):
+        self.area_type = area_type    
+        self.number = number            
+        self.name = f"{area_type}-{number}"
+
+        self.damage = 0                 # current damage level
+        self.assigned_worker = None     # worker currently fixing this area
+
+        # Stats tracking
+        self.turns_operational = 0
+        self.turns_being_repaired = 0
+        self.turns_damaged_unassigned = 0
+
+    def is_working(self):
+        # area is working if damage = 0
+        return self.damage == 0
+
+    def is_being_repaired(self):
+        return self.assigned_worker is not None
+
+    def apply_damage(self, amount):
+        # give this area a damage value
+        self.damage = amount
+
+    def apply_repair(self):
+        # worker does their repair this turn
+        if self.assigned_worker is not None:
+            repair_rate = self.assigned_worker.get_repair_rate(self.area_type)
+            self.damage -= repair_rate
+
+            # if damage is 0 or less, area is fixed
+            if self.damage <= 0:
+                self.damage = 0
+                self.assigned_worker.finish_job(self.area_type)  # worker becomes available
+                self.assigned_worker = None
+
+    def update_stats(self):
+        # called each turn to track how time is being spent
+        if self.is_working():
+            self.turns_operational += 1
+        elif self.is_being_repaired():
+            self.turns_being_repaired += 1
+        else:
+            self.turns_damaged_unassigned += 1
+
+    def print_stats(self):
+        print(f"  {self.name}:")
+        print(f"    Operational turns:          {self.turns_operational}")
+        print(f"    Being repaired turns:        {self.turns_being_repaired}")
+        print(f"    Damaged (unassigned) turns:  {self.turns_damaged_unassigned}")
+
+
+# CLASS: Worker
+# represents one employee
+class Worker:
+    def __init__(self, name, rate_a, rate_b, rate_c):
+        self.name = name
+
+        # how much damage they fix per turn for each type
+        self.repair_rates = {
+            'TypeA': rate_a,
+            'TypeB': rate_b,
+            'TypeC': rate_c
+        }
+
+        self.current_job = None  # area they are currently working on (None means they are free)
+
+        # stats tracking
+        self.turns_worked = {'TypeA': 0, 'TypeB': 0, 'TypeC': 0}
+        self.jobs_completed = {'TypeA': 0, 'TypeB': 0, 'TypeC': 0}
+        self.turns_idle = 0
+
+    def is_available(self):
+        return self.current_job is None
+
+    def get_repair_rate(self, area_type):
+        return self.repair_rates[area_type]
+
+    def turns_to_fix(self, area):
+        # how many full turns would this worker take to fix this area?
+        rate = self.repair_rates[area.area_type]
+        return math.ceil(area.damage / rate)
+
+    def assign_job(self, area):
+        # assign this worker to an area
+        self.current_job = area
+        area.assigned_worker = self
+
+    def finish_job(self, area_type):
+        # called when repair is done - updates stats and frees worker
+        self.jobs_completed[area_type] += 1
+        self.current_job = None
+
+    def update_stats(self):
+        # called each turn to log working/idle time
+        if self.current_job is not None:
+            area_type = self.current_job.area_type
+            self.turns_worked[area_type] += 1
+        else:
+            self.turns_idle += 1
+
+    def print_stats(self):
+        status = "Currently repairing" if self.current_job else "Not repairing"
+        print(f"  {self.name}:")
+        print(f"    Turns worked - TypeA: {self.turns_worked['TypeA']}, "
+              f"TypeB: {self.turns_worked['TypeB']}, TypeC: {self.turns_worked['TypeC']}")
+        print(f"    Jobs completed - TypeA: {self.jobs_completed['TypeA']}, "
+              f"TypeB: {self.jobs_completed['TypeB']}, TypeC: {self.jobs_completed['TypeC']}")
+        print(f"    Turns idle: {self.turns_idle}")
+        print(f"    Status: {status}")
